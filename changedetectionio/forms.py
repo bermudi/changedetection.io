@@ -3,6 +3,8 @@ import re
 from loguru import logger
 from wtforms.widgets.core import TimeInput
 
+from changedetectionio.blueprint.rss import RSS_FORMAT_TYPES
+from changedetectionio.conditions.form import ConditionFormRow
 from changedetectionio.strtobool import strtobool
 
 from wtforms import (
@@ -304,9 +306,11 @@ class ValidateAppRiseServers(object):
 
     def __call__(self, form, field):
         import apprise
-        apobj = apprise.Apprise()
-        # so that the custom endpoints are registered
-        from changedetectionio.apprise_plugin import apprise_custom_api_call_wrapper
+        from .apprise_plugin.assets import apprise_asset
+        from .apprise_plugin.custom_handlers import apprise_http_custom_handler  # noqa: F401
+
+        apobj = apprise.Apprise(asset=apprise_asset)
+
         for server_url in field.data:
             url = server_url.strip()
             if url.startswith("#"):
@@ -509,6 +513,7 @@ class quickWatchForm(Form):
     edit_and_watch_submit_button = SubmitField('Edit > Watch', render_kw={"class": "pure-button pure-button-primary"})
 
 
+
 # Common to a single watch and the global settings
 class commonSettingsForm(Form):
     from . import processors
@@ -595,6 +600,10 @@ class processor_text_json_diff_form(commonSettingsForm):
 
     notification_muted = BooleanField('Notifications Muted / Off', default=False)
     notification_screenshot = BooleanField('Attach screenshot to notification (where possible)', default=False)
+
+    conditions_match_logic = RadioField(u'Match', choices=[('ALL', 'Match all of the following'),('ANY', 'Match any of the following')], default='ALL')
+    conditions = FieldList(FormField(ConditionFormRow), min_entries=1)  # Add rule logic here
+
 
     def extra_tab_content(self):
         return None
@@ -731,6 +740,9 @@ class globalSettingsApplicationForm(commonSettingsForm):
                               render_kw={"style": "width: 5em;"},
                               validators=[validators.NumberRange(min=0,
                                                                  message="Should be atleast zero (disabled)")])
+
+    rss_content_format = SelectField('RSS Content format', choices=RSS_FORMAT_TYPES)
+
     removepassword_button = SubmitField('Remove password', render_kw={"class": "pure-button pure-button-primary"})
     render_anchor_tag_content = BooleanField('Render anchor tag content', default=False)
     shared_diff_access = BooleanField('Allow access to view diff page when password is enabled', default=False, validators=[validators.Optional()])

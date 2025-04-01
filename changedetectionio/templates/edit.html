@@ -1,11 +1,14 @@
 {% extends 'base.html' %}
 {% block content %}
-{% from '_helpers.html' import render_field, render_checkbox_field, render_button, render_time_schedule_form, playwright_warning, only_webdriver_type_watches_warning %}
+{% from '_helpers.html' import render_field, render_checkbox_field, render_button, render_time_schedule_form, playwright_warning, only_webdriver_type_watches_warning, render_fieldlist_of_formfields_as_table %}
 {% from '_common_fields.html' import render_common_settings_form %}
 <script src="{{url_for('static_content', group='js', filename='tabs.js')}}" defer></script>
 <script src="{{url_for('static_content', group='js', filename='vis.js')}}" defer></script>
 <script src="{{url_for('static_content', group='js', filename='global-settings.js')}}" defer></script>
 <script src="{{url_for('static_content', group='js', filename='scheduler.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='conditions.js')}}" defer></script>
+
+
 <script>
     const browser_steps_available_screenshots=JSON.parse('{{ watch.get_browsersteps_available_screenshots|tojson }}');
     const browser_steps_config=JSON.parse('{{ browser_steps_config|tojson }}');
@@ -17,7 +20,7 @@
 {% if emailprefix %}
     const email_notification_prefix=JSON.parse('{{ emailprefix|tojson }}');
 {% endif %}
-    const notification_base_url="{{url_for('ajax_callback_send_notification_test', watch_uuid=uuid)}}";
+    const notification_base_url="{{url_for('ui.ui_notification.ajax_callback_send_notification_test', watch_uuid=uuid)}}";
     const playwright_enabled={% if playwright_enabled %}true{% else %}false{% endif %};
     const recheck_proxy_start_url="{{url_for('check_proxies.start_check', uuid=uuid)}}";
     const proxy_recheck_status_url="{{url_for('check_proxies.get_recheck_status', uuid=uuid)}}";
@@ -50,6 +53,7 @@
             {% if watch['processor'] == 'text_json_diff' %}
             <li class="tab"><a id="visualselector-tab" href="#visualselector">Visual Filter Selector</a></li>
             <li class="tab" id="filters-and-triggers-tab"><a href="#filters-and-triggers">Filters &amp; Triggers</a></li>
+            <li class="tab" id="conditions-tab"><a href="#conditions">Conditions</a></li>
             {% endif %}
             <li class="tab"><a href="#notifications">Notifications</a></li>
             <li class="tab"><a href="#stats">Stats</a></li>
@@ -58,7 +62,7 @@
 
     <div class="box-wrap inner">
         <form class="pure-form pure-form-stacked"
-              action="{{ url_for('edit_page', uuid=uuid, next = request.args.get('next'), unpause_on_save = request.args.get('unpause_on_save'), tag = request.args.get('tag')) }}" method="POST">
+              action="{{ url_for('ui.ui_edit.edit_page', uuid=uuid, next = request.args.get('next'), unpause_on_save = request.args.get('unpause_on_save'), tag = request.args.get('tag')) }}" method="POST">
              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <div class="tab-pane-inner" id="general">
@@ -270,17 +274,43 @@ Math: {{ 1 + 1 }}") }}
                         {% if has_default_notification_urls %}
                         <div class="inline-warning">
                             <img class="inline-warning-icon" src="{{url_for('static_content', group='images', filename='notice.svg')}}" alt="Look out!" title="Lookout!" >
-                            There are <a href="{{ url_for('settings_page')}}#notifications">system-wide notification URLs enabled</a>, this form will override notification settings for this watch only &dash; an empty Notification URL list here will still send notifications.
+                            There are <a href="{{ url_for('settings.settings_page')}}#notifications">system-wide notification URLs enabled</a>, this form will override notification settings for this watch only &dash; an empty Notification URL list here will still send notifications.
                         </div>
                         {% endif %}
                         <a href="#notifications" id="notification-setting-reset-to-default" class="pure-button button-xsmall" style="right: 20px; top: 20px; position: absolute; background-color: #5f42dd; border-radius: 4px; font-size: 70%; color: #fff">Use system defaults</a>
-
                         {{ render_common_settings_form(form, emailprefix, settings_application, extra_notification_token_placeholder_info) }}
                     </div>
                 </fieldset>
             </div>
 
             {% if watch['processor'] == 'text_json_diff' %}
+
+            <div class="tab-pane-inner" id="conditions">
+                    <script>
+                        const verify_condition_rule_url="{{url_for('conditions.verify_condition_single_rule', watch_uuid=uuid)}}";
+                    </script>
+                <style>
+                    .verifyRuleRow {
+                        background-color: #4caf50;
+                        color: white;
+                        border: none;
+                        cursor: pointer;
+                        font-weight: bold;
+                    }
+                    .verifyRuleRow:hover {
+                        background-color: #45a049;
+                    }
+                </style>
+                <div class="pure-control-group">
+                    {{ render_field(form.conditions_match_logic) }}
+                    {{ render_fieldlist_of_formfields_as_table(form.conditions) }}
+                    <div class="pure-form-message-inline">
+
+                        <p id="verify-state-text">Use the verify (✓) button to test if a condition passes against the current snapshot.</p>
+                       Read a quick tutorial about <a href="https://changedetection.io/tutorial/conditional-actions-web-page-changes">using conditional web page changes here</a>.<br>
+                    </div>
+                </div>
+            </div>
             <div class="tab-pane-inner" id="filters-and-triggers">
                 <span id="activate-text-preview" class="pure-button pure-button-primary button-xsmall">Activate preview</span>
               <div>
@@ -307,7 +337,7 @@ xpath://body/div/span[contains(@class, 'example-class')]",
                         {% if '/text()' in  field %}
                           <span class="pure-form-message-inline"><strong>Note!: //text() function does not work where the &lt;element&gt; contains &lt;![CDATA[]]&gt;</strong></span><br>
                         {% endif %}
-                        <span class="pure-form-message-inline">One CSS, xPath, JSON Path/JQ selector per line, <i>any</i> rules that matches will be used.<br>
+                        <span class="pure-form-message-inline">One CSS, xPath 1 &amp; 2, JSON Path/JQ selector per line, <i>any</i> rules that matches will be used.<br>
                         <span data-target="#advanced-help-selectors" class="toggle-show pure-button button-tag button-xsmall">Show advanced help and tips</span><br>
                     <ul id="advanced-help-selectors" style="display: none;">
                         <li>CSS - Limit text to this CSS rule, only text matching this CSS rule is included.</li>
@@ -450,7 +480,7 @@ keyword") }}
             </div>
               <div id="text-preview" style="display: none;" >
                     <script>
-                        const preview_text_edit_filters_url="{{url_for('watch_get_preview_rendered', uuid=uuid)}}";
+                        const preview_text_edit_filters_url="{{url_for('ui.ui_edit.watch_get_preview_rendered', uuid=uuid)}}";
                     </script>
                     <br>
                     {#<div id="text-preview-controls"><span id="text-preview-refresh" class="pure-button button-xsmall">Refresh</span></div>#}
@@ -547,7 +577,7 @@ keyword") }}
                     </table>
                     {% if watch.history_n %}
                         <p>
-                             <a href="{{url_for('watch_get_latest_html', uuid=uuid)}}" class="pure-button button-small">Download latest HTML snapshot</a>
+                             <a href="{{url_for('ui.ui_edit.watch_get_latest_html', uuid=uuid)}}" class="pure-button button-small">Download latest HTML snapshot</a>
                         </p>
                     {% endif %}
 
@@ -556,12 +586,12 @@ keyword") }}
             <div id="actions">
                 <div class="pure-control-group">
                     {{ render_button(form.save_button) }}
-                    <a href="{{url_for('form_delete', uuid=uuid)}}"
+                    <a href="{{url_for('ui.form_delete', uuid=uuid)}}"
                        class="pure-button button-small button-error ">Delete</a>
-                    <a href="{{url_for('clear_watch_history', uuid=uuid)}}"
-                       class="pure-button button-small button-error ">Clear History</a>
-                    <a href="{{url_for('form_clone', uuid=uuid)}}"
-                       class="pure-button button-small ">Create Copy</a>
+                    {% if watch.history_n %}<a href="{{url_for('ui.clear_watch_history', uuid=uuid)}}"
+                       class="pure-button button-small button-error ">Clear History</a>{% endif %}
+                    <a href="{{url_for('ui.form_clone', uuid=uuid)}}"
+                       class="pure-button button-small ">Clone &amp; Edit</a>
                 </div>
             </div>
         </form>

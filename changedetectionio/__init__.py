@@ -2,7 +2,7 @@
 
 # Read more https://github.com/dgtlmoon/changedetection.io/wiki
 
-__version__ = '0.49.4'
+__version__ = '0.49.9'
 
 from changedetectionio.strtobool import strtobool
 from json.decoder import JSONDecodeError
@@ -19,7 +19,6 @@ from changedetectionio import store
 from changedetectionio.flask_app import changedetection_app
 from loguru import logger
 
-
 # Only global so we can access it in the signal handler
 app = None
 datastore = None
@@ -29,8 +28,6 @@ def get_version():
 
 # Parent wrapper or OS sends us a SIGTERM/SIGINT, do everything required for a clean shutdown
 def sigshutdown_handler(_signo, _stack_frame):
-    global app
-    global datastore
     name = signal.Signals(_signo).name
     logger.critical(f'Shutdown: Got Signal - {name} ({_signo}), Saving DB to disk and calling shutdown')
     datastore.sync_to_json()

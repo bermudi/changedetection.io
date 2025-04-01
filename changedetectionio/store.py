@@ -251,8 +251,14 @@ class ChangeDetectionStore:
     # Clone a watch by UUID
     def clone(self, uuid):
         url = self.data['watching'][uuid].get('url')
-        extras = self.data['watching'][uuid]
+        extras = deepcopy(self.data['watching'][uuid])
         new_uuid = self.add_watch(url=url, extras=extras)
+        watch = self.data['watching'][new_uuid]
+
+        if self.data['settings']['application'].get('extract_title_as_title') or watch['extract_title_as_title']:
+            # Because it will be recalculated on the next fetch
+            self.data['watching'][new_uuid]['title'] = None
+
         return new_uuid
 
     def url_exists(self, url):
@@ -362,7 +368,6 @@ class ChangeDetectionStore:
         new_watch.update(apply_extras)
         new_watch.ensure_data_dir_exists()
         self.__data['watching'][new_uuid] = new_watch
-
 
         if write_to_disk_now:
             self.sync_to_json()
@@ -571,16 +576,16 @@ class ChangeDetectionStore:
 
         return ret
 
-    def add_tag(self, name):
+    def add_tag(self, title):
         # If name exists, return that
-        n = name.strip().lower()
+        n = title.strip().lower()
         logger.debug(f">>> Adding new tag - '{n}'")
         if not n:
             return False
 
         for uuid, tag in self.__data['settings']['application'].get('tags', {}).items():
             if n == tag.get('title', '').lower().strip():
-                logger.warning(f"Tag '{name}' already exists, skipping creation.")
+                logger.warning(f"Tag '{title}' already exists, skipping creation.")
                 return uuid
 
         # Eventually almost everything todo with a watch will apply as a Tag
@@ -588,7 +593,7 @@ class ChangeDetectionStore:
         with self.lock:
             from .model import Tag
             new_tag = Tag.model(datastore_path=self.datastore_path, default={
-                'title': name.strip(),
+                'title': title.strip(),
                 'date_created': int(time.time())
             })
 
@@ -631,6 +636,41 @@ class ChangeDetectionStore:
             if watch.get('processor') == processor_name:
                 return True
         return False
+        
+    def search_watches_for_url(self, query, tag_limit=None, partial=False):
+        """Search watches by URL, title, or error messages
+        
+        Args:
+            query (str): Search term to match against watch URLs, titles, and error messages
+            tag_limit (str, optional): Optional tag name to limit search results
+            partial: (bool, optional): sub-string matching
+
+        Returns:
+            list: List of UUIDs of watches that match the search criteria
+        """
+        matching_uuids = []
+        query = query.lower().strip()
+        tag = self.tag_exists_by_name(tag_limit) if tag_limit else False
+
+        for uuid, watch in self.data['watching'].items():
+            # Filter by tag if requested
+            if tag_limit:
+                if not tag.get('uuid') in watch.get('tags', []):
+                    continue
+
+            # Search in URL, title, or error messages
+            if partial:
+                if ((watch.get('title') and query in watch.get('title').lower()) or
+                    query in watch.get('url', '').lower() or
+                    (watch.get('last_error') and query in watch.get('last_error').lower())):
+                    matching_uuids.append(uuid)
+            else:
+                if ((watch.get('title') and query == watch.get('title').lower()) or
+                        query == watch.get('url', '').lower() or
+                        (watch.get('last_error') and query == watch.get('last_error').lower())):
+                    matching_uuids.append(uuid)
+
+        return matching_uuids
 
     def get_unique_notification_tokens_available(self):
         # Ask each type of watch if they have any extra notification token to add to the validation
@@ -847,7 +887,7 @@ class ChangeDetectionStore:
             if tag:
                 tag_uuids = []
                 for t in tag.split(','):
-                    tag_uuids.append(self.add_tag(name=t))
+                    tag_uuids.append(self.add_tag(title=t))
 
                 self.data['watching'][uuid]['tags'] = tag_uuids
 
